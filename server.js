@@ -6,29 +6,27 @@ const User = require('./models/User');
 
 const app = express();
 
-// 🟢 FIX: Duplicate CORS hata kar ek single strong block banaya jo sab handle karega
+// 🟢 CORS Configuration
 app.use(cors({
-    origin: '*', // Sabhi jagah se (Naroda/Ahmedabad) allow karega
+    origin: '*', 
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning'] // Ngrok bypass allow kiya
+    allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning']
 }));
 
-app.use(express.json({ limit: '10mb' })); // Badi profile pic aur chat history ke liye
+app.use(express.json({ limit: '10mb' }));
 
 // 🛠️ DATABASE CONNECTION 
-mongoose.connect(process.env.MONGO_URI, {
-    serverSelectionTimeoutMS: 10000, 
-    family: 4 
-})
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Database Connected Successfully!'))
   .catch((err) => console.log('❌ Database Connection Error:', err.message));
 
-// --- ROUTES ---
+// --- ROUTES (Updated to use User Model) ---
 
 // 1. Naya User Register karne ke liye 
 app.post('/register', async (req, res) => {
     try {
-        await mongoose.connection.db.collection('users').insertOne(req.body);
+        const newUser = new User(req.body);
+        await newUser.save();
         res.status(201).json({ message: "User Registered Successfully!" });
     } catch (error) {
         res.status(400).json({ message: "Error registering user", error: error.message });
@@ -38,24 +36,25 @@ app.post('/register', async (req, res) => {
 // 2. Saare Users ki list dekhne ke liye 
 app.get('/users', async (req, res) => {
     try {
-        const users = await mongoose.connection.db.collection('users').find().toArray();
+        const users = await User.find();
         res.json(users);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 3. 🔄 Chat, Swaps, aur Profile Live Update karne ke liye
+// 3. 🔄 Chat, Swaps, aur Profile Live Update
 app.put('/update-user/:email', async (req, res) => {
     try {
         const updateData = { ...req.body };
         delete updateData._id; 
         
-        await mongoose.connection.db.collection('users').updateOne(
+        const updated = await User.findOneAndUpdate(
             { email: req.params.email },
-            { $set: updateData }
+            { $set: updateData },
+            { new: true }
         );
-        res.json({ message: "Data live updated on Cloud!" });
+        res.json({ message: "Data live updated on Cloud!", user: updated });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -64,7 +63,7 @@ app.put('/update-user/:email', async (req, res) => {
 // 4. 🗑️ User Delete karne ka Route 
 app.delete('/delete-user/:email', async (req, res) => {
     try {
-        const deletedUser = await mongoose.connection.db.collection('users').deleteOne({ email: req.params.email });
+        const deletedUser = await User.deleteOne({ email: req.params.email });
         if (deletedUser.deletedCount > 0) {
             res.json({ message: "User deleted from MongoDB successfully!" });
         } else {
@@ -75,14 +74,12 @@ app.delete('/delete-user/:email', async (req, res) => {
     }
 });
 
-// 5. Server check karne ke liye base route
+// 5. Server check
 app.get('/', (req, res) => {
-    res.send('🚀 Skill Swap Backend is Running Perfectly and accepting all requests!');
+    res.send('🚀 Skill Swap Backend is Running Perfectly!');
 });
 
-// 🛠️ FIX 2: Server ko '0.0.0.0' par set kiya taaki ye Global ho jaye
-const PORT = 5000;
-app.listen(PORT, '0.0.0.0', () => {
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
-    console.log(`📡 Ready for Ngrok or External IP connection!`);
 });
