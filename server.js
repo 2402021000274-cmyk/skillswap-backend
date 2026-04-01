@@ -6,7 +6,6 @@ const User = require('./models/User');
 
 const app = express();
 
-// 🟢 CORS Configuration
 app.use(cors({
     origin: '*', 
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -15,11 +14,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// 🛠️ DATABASE CONNECTION 
 mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
       console.log('✅ MongoDB Connected Successfully!');
-      // Naye collection ke indexes sync karega
       await User.syncIndexes();
       console.log('🔄 Database Indexes Synchronized!');
   })
@@ -27,18 +24,14 @@ mongoose.connect(process.env.MONGO_URI)
 
 // --- ROUTES ---
 
-// 1. Register Route 
 app.post('/register', async (req, res) => {
     try {
         const { email } = req.body;
-        const cleanEmail = email.trim().toLowerCase(); // Email ko saaf kiya
+        const cleanEmail = email.trim().toLowerCase(); 
 
         const existingUser = await User.findOne({ email: cleanEmail });
-
         if (existingUser) {
-            return res.status(400).json({ 
-                message: "Email already exists in the new records!" 
-            });
+            return res.status(400).json({ message: "Email already exists in the records!" });
         }
 
         const newUser = new User({
@@ -47,7 +40,7 @@ app.post('/register', async (req, res) => {
         });
 
         await newUser.save();
-        res.status(201).json({ message: "User Registered Successfully in New Collection!" });
+        res.status(201).json({ message: "User Registered Successfully!" });
 
     } catch (error) {
         if (error.code === 11000) {
@@ -57,7 +50,7 @@ app.post('/register', async (req, res) => {
     }
 });
 
-// 🔐 2. LOGIN ROUTE (Naya add kiya)
+// 🔐 LOGIN ROUTE (Email aur Password ke sath)
 app.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -69,7 +62,6 @@ app.post('/login', async (req, res) => {
             return res.status(404).json({ message: "Account nahi mila! Pehle register karo." });
         }
 
-        // Check password match
         if (user.password !== password) {
             return res.status(401).json({ message: "Galat Password! Dubara check karo." });
         }
@@ -81,33 +73,26 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// 📧 3. SEND OTP / VERIFY EMAIL ROUTE (Naya add kiya)
 app.post('/send-otp', async (req, res) => {
     try {
         const { email } = req.body;
         const cleanEmail = email.trim().toLowerCase();
 
-        // Pehle check karo user DB mein hai ya nahi
         const existingUser = await User.findOne({ email: cleanEmail });
-        
         if (!existingUser) {
-            return res.status(404).json({ message: "Ye email humare database mein nahi hai!" });
+            return res.status(404).json({ message: "Ye email database mein nahi hai!" });
         }
-
         res.status(200).json({ message: "OTP sent successfully to your email!" });
-
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 🔑 4. RESET PASSWORD ROUTE (Naya add kiya)
 app.post('/reset-password', async (req, res) => {
     try {
         const { email, newPassword } = req.body;
         const cleanEmail = email.trim().toLowerCase();
 
-        // Exact email find karo aur sirf uska password update karo
         const updatedUser = await User.findOneAndUpdate(
             { email: cleanEmail }, 
             { $set: { password: newPassword } }, 
@@ -117,15 +102,12 @@ app.post('/reset-password', async (req, res) => {
         if (!updatedUser) {
             return res.status(404).json({ message: "User nahi mila, password update fail ho gaya." });
         }
-
         res.status(200).json({ message: "Password updated successfully! Ab login karo." });
-
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 5. Get All Users
 app.get('/users', async (req, res) => {
     try {
         const users = await User.find();
@@ -135,7 +117,6 @@ app.get('/users', async (req, res) => {
     }
 });
 
-// 6. Update User
 app.put('/update-user/:email', async (req, res) => {
     try {
         const updateData = { ...req.body };
@@ -152,7 +133,6 @@ app.put('/update-user/:email', async (req, res) => {
     }
 });
 
-// 7. Delete User
 app.delete('/delete-user/:email', async (req, res) => {
     try {
         const deletedUser = await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
@@ -167,7 +147,7 @@ app.delete('/delete-user/:email', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('🚀 Backend is Live with New Auth Routes!');
+    res.send('🚀 Backend is Live!');
 });
 
 const PORT = process.env.PORT || 5000;
