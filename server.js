@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const User = require('./models/User'); 
 const http = require('http'); // 🟢 NAYA ADD KIYA: Socket ke liye
 const { Server } = require('socket.io'); // 🟢 NAYA ADD KIYA: Realtime engine
 
@@ -19,7 +20,7 @@ app.use(express.json({ limit: '10mb' }));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // Netlify ya local dono allow karega
+        origin: "*", 
         methods: ["GET", "POST", "PUT", "DELETE"]
     }
 });
@@ -191,7 +192,7 @@ app.delete('/delete-user/:email', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('🚀 Backend is Live!');
+    res.send('🚀 Backend is Live with Real-Time Chat!');
 });
 
 const PORT = process.env.PORT || 5000;
