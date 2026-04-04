@@ -23,7 +23,7 @@ const io = new Server(server, {
     }
 });
 
-const onlineUsers = new Map(); // Email -> Socket ID
+const onlineUsers = new Map(); 
 
 io.on('connection', (socket) => {
     socket.on('register-user', (email) => {
@@ -38,9 +38,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // =========================================
-    // 🟢 WEBRTC VIDEO CALL SIGNALING EVENTS
-    // =========================================
+    // WebRTC Video Call Signaling
     socket.on('call-user', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -83,7 +81,6 @@ io.on('connection', (socket) => {
             });
         }
     });
-    // =========================================
 
     socket.on('disconnect', () => {
         let disconnectedEmail = null;
@@ -159,7 +156,11 @@ app.post('/send-otp', async (req, res) => {
 app.post('/reset-password', async (req, res) => {
     try {
         const { email, newPassword } = req.body;
-        const updatedUser = await User.findOneAndUpdate({ email: email.trim().toLowerCase() }, { $set: { password: newPassword } }, { new: true } );
+        const updatedUser = await User.findOneAndUpdate(
+            { email: email.trim().toLowerCase() }, 
+            { $set: { password: newPassword } }, 
+            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
+        );
         if (!updatedUser) return res.status(404).json({ message: "User nahi mila, password update fail ho gaya." });
         res.status(200).json({ message: "Password updated successfully! Ab login karo." });
     } catch (error) { res.status(500).json({ error: error.message }); }
@@ -176,7 +177,11 @@ app.put('/update-user/:email', async (req, res) => {
     try {
         const updateData = { ...req.body };
         delete updateData._id; 
-        const updated = await User.findOneAndUpdate( { email: req.params.email.trim().toLowerCase() }, { $set: updateData }, { new: true } );
+        const updated = await User.findOneAndUpdate( 
+            { email: req.params.email.trim().toLowerCase() }, 
+            { $set: updateData }, 
+            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
+        );
         res.json({ message: "Update Success!", user: updated });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
