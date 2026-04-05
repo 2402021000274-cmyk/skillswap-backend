@@ -38,14 +38,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ✨ AI Translator Signal ka Rasta
-    socket.on('send-ai-caption', (data) => {
-        const receiverSocket = onlineUsers.get(data.to);
-        if (receiverSocket) {
-            io.to(receiverSocket).emit('receive-ai-caption', data);
-        }
-    });
-
     // WebRTC Video Call Signaling
     socket.on('call-user', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
@@ -146,8 +138,8 @@ app.post('/login', async (req, res) => {
         const { email, password } = req.body;
         const cleanEmail = email.trim().toLowerCase();
         const user = await User.findOne({ email: cleanEmail });
-        if (!user) return res.status(404).json({ message: "Account not found! Please register first." });
-        if (user.password !== password) return res.status(401).json({ message: "Incorrect password! Please try again." });
+        if (!user) return res.status(404).json({ message: "Account nahi mila! Pehle register karo." });
+        if (user.password !== password) return res.status(401).json({ message: "Galat Password! Dubara check karo." });
         res.status(200).json({ message: "Login Successful!", user: user });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -156,7 +148,7 @@ app.post('/send-otp', async (req, res) => {
     try {
         const cleanEmail = req.body.email.trim().toLowerCase();
         const existingUser = await User.findOne({ email: cleanEmail });
-        if (!existingUser) return res.status(404).json({ message: "This email is not registered in our database." });
+        if (!existingUser) return res.status(404).json({ message: "Ye email database mein nahi hai!" });
         res.status(200).json({ message: "OTP sent successfully to your email!" });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -167,10 +159,10 @@ app.post('/reset-password', async (req, res) => {
         const updatedUser = await User.findOneAndUpdate(
             { email: email.trim().toLowerCase() }, 
             { $set: { password: newPassword } }, 
-            { returnDocument: 'after' } 
+            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
         );
-        if (!updatedUser) return res.status(404).json({ message: "User not found. Password update failed." });
-        res.status(200).json({ message: "Password updated successfully! You can now log in." });
+        if (!updatedUser) return res.status(404).json({ message: "User nahi mila, password update fail ho gaya." });
+        res.status(200).json({ message: "Password updated successfully! Ab login karo." });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -188,7 +180,7 @@ app.put('/update-user/:email', async (req, res) => {
         const updated = await User.findOneAndUpdate( 
             { email: req.params.email.trim().toLowerCase() }, 
             { $set: updateData }, 
-            { returnDocument: 'after' } 
+            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
         );
         res.json({ message: "Update Success!", user: updated });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -198,7 +190,7 @@ app.delete('/delete-user/:email', async (req, res) => {
     try {
         const deletedUser = await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
         if (deletedUser.deletedCount > 0) res.json({ message: "User deleted successfully!" });
-        else res.status(404).json({ message: "User not found!" });
+        else res.status(404).json({ message: "User nahi mila!" });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
