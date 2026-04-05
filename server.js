@@ -38,7 +38,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ✨ NAYA: AI Translator Signal ka Rasta
+    // ✨ AI Translator Signal ka Rasta
     socket.on('send-ai-caption', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -146,8 +146,8 @@ app.post('/login', async (req, res) => {
         const { email, password } = req.body;
         const cleanEmail = email.trim().toLowerCase();
         const user = await User.findOne({ email: cleanEmail });
-        if (!user) return res.status(404).json({ message: "Account nahi mila! Pehle register karo." });
-        if (user.password !== password) return res.status(401).json({ message: "Galat Password! Dubara check karo." });
+        if (!user) return res.status(404).json({ message: "Account not found! Please register first." });
+        if (user.password !== password) return res.status(401).json({ message: "Incorrect password! Please try again." });
         res.status(200).json({ message: "Login Successful!", user: user });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -156,7 +156,7 @@ app.post('/send-otp', async (req, res) => {
     try {
         const cleanEmail = req.body.email.trim().toLowerCase();
         const existingUser = await User.findOne({ email: cleanEmail });
-        if (!existingUser) return res.status(404).json({ message: "Ye email database mein nahi hai!" });
+        if (!existingUser) return res.status(404).json({ message: "This email is not registered in our database." });
         res.status(200).json({ message: "OTP sent successfully to your email!" });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -169,8 +169,8 @@ app.post('/reset-password', async (req, res) => {
             { $set: { password: newPassword } }, 
             { returnDocument: 'after' } 
         );
-        if (!updatedUser) return res.status(404).json({ message: "User nahi mila, password update fail ho gaya." });
-        res.status(200).json({ message: "Password updated successfully! Ab login karo." });
+        if (!updatedUser) return res.status(404).json({ message: "User not found. Password update failed." });
+        res.status(200).json({ message: "Password updated successfully! You can now log in." });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -198,7 +198,7 @@ app.delete('/delete-user/:email', async (req, res) => {
     try {
         const deletedUser = await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
         if (deletedUser.deletedCount > 0) res.json({ message: "User deleted successfully!" });
-        else res.status(404).json({ message: "User nahi mila!" });
+        else res.status(404).json({ message: "User not found!" });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
