@@ -38,6 +38,14 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ✨ NAYA: AI Translator Signal ka Rasta
+    socket.on('send-ai-caption', (data) => {
+        const receiverSocket = onlineUsers.get(data.to);
+        if (receiverSocket) {
+            io.to(receiverSocket).emit('receive-ai-caption', data);
+        }
+    });
+
     // WebRTC Video Call Signaling
     socket.on('call-user', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
@@ -159,7 +167,7 @@ app.post('/reset-password', async (req, res) => {
         const updatedUser = await User.findOneAndUpdate(
             { email: email.trim().toLowerCase() }, 
             { $set: { password: newPassword } }, 
-            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
+            { returnDocument: 'after' } 
         );
         if (!updatedUser) return res.status(404).json({ message: "User nahi mila, password update fail ho gaya." });
         res.status(200).json({ message: "Password updated successfully! Ab login karo." });
@@ -180,7 +188,7 @@ app.put('/update-user/:email', async (req, res) => {
         const updated = await User.findOneAndUpdate( 
             { email: req.params.email.trim().toLowerCase() }, 
             { $set: updateData }, 
-            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
+            { returnDocument: 'after' } 
         );
         res.json({ message: "Update Success!", user: updated });
     } catch (err) { res.status(500).json({ error: err.message }); }
