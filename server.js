@@ -37,7 +37,15 @@ io.on('connection', (socket) => {
             io.to(receiverSocket).emit('receive-msg', data);
         }
     });
-
+      // --- AI TRANSLATOR SIGNALING LOGIC ---
+    socket.on('send-translation', (data) => {
+        // data.to mein samne wale user ka email aayega
+        const receiverSocket = onlineUsers.get(data.to);
+        if (receiverSocket) {
+            io.to(receiverSocket).emit('receive-translation', data);
+        }
+    });
+    // -------------------------------------
     // WebRTC Video Call Signaling
     socket.on('call-user', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
