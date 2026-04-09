@@ -25,20 +25,26 @@ const io = new Server(server, {
 
 const onlineUsers = new Map(); 
 
-// 🟢 NEW: Live Visitor Counter (Starting from a base number for Science Fair impact)
-let totalVisitors = 1204; 
+// 🟢 BUG 3 FIX: Counter 0 se shuru hoga aur refresh pe nahi badhega!
+let totalVisitors = 0; 
 
 io.on('connection', (socket) => {
     
-    // Send current visitor count immediately to the new connected user
+    // Naya banda aate hi purana counter bhejo
     socket.emit('visitor-update', totalVisitors);
 
-    socket.on('register-user', (email) => {
+    socket.on('register-user', (data) => {
+        // Backend handle both old string format and new object format
+        let email = data.email || data;
+        let isNewLogin = data.isNewLogin || false;
+        
         onlineUsers.set(email, socket.id);
         
-        // 🟢 NEW: Increment visitor count and broadcast to everyone in real-time
-        totalVisitors++;
-        io.emit('visitor-update', totalVisitors);
+        // 🟢 BUG 3 FIX: Sirf tabhi counter badhega jab user actual fresh login karega!
+        if (isNewLogin) {
+            totalVisitors++;
+            io.emit('visitor-update', totalVisitors);
+        }
         
         io.emit('user-status-update', { email: email, status: true }); 
     });
@@ -49,16 +55,14 @@ io.on('connection', (socket) => {
             io.to(receiverSocket).emit('receive-msg', data);
         }
     });
-      // --- AI TRANSLATOR SIGNALING LOGIC ---
+
     socket.on('send-translation', (data) => {
-        // data.to will contain the receiver's email
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
             io.to(receiverSocket).emit('receive-translation', data);
         }
     });
-    // -------------------------------------
-    // WebRTC Video Call Signaling
+
     socket.on('call-user', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -136,8 +140,6 @@ mongoose.connect(process.env.MONGO_URI)
 const userSchema = new mongoose.Schema({ email: { type: String, unique: true } }, { strict: false });
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
-// --- ROUTES ---
-
 app.post('/register', async (req, res) => {
     try {
         const { email } = req.body;
@@ -179,7 +181,7 @@ app.post('/reset-password', async (req, res) => {
         const updatedUser = await User.findOneAndUpdate(
             { email: email.trim().toLowerCase() }, 
             { $set: { password: newPassword } }, 
-            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
+            { returnDocument: 'after' }
         );
         if (!updatedUser) return res.status(404).json({ message: "User not found, password update failed." });
         res.status(200).json({ message: "Password updated successfully! Please log in." });
@@ -200,7 +202,7 @@ app.put('/update-user/:email', async (req, res) => {
         const updated = await User.findOneAndUpdate( 
             { email: req.params.email.trim().toLowerCase() }, 
             { $set: updateData }, 
-            { returnDocument: 'after' } // 🟢 FIXED WARNING HERE
+            { returnDocument: 'after' }
         );
         res.json({ message: "Update Success!", user: updated });
     } catch (err) { res.status(500).json({ error: err.message }); }
