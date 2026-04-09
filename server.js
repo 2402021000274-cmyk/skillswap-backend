@@ -25,9 +25,21 @@ const io = new Server(server, {
 
 const onlineUsers = new Map(); 
 
+// 🟢 NEW: Live Visitor Counter (Starting from a base number for Science Fair impact)
+let totalVisitors = 1204; 
+
 io.on('connection', (socket) => {
+    
+    // Send current visitor count immediately to the new connected user
+    socket.emit('visitor-update', totalVisitors);
+
     socket.on('register-user', (email) => {
         onlineUsers.set(email, socket.id);
+        
+        // 🟢 NEW: Increment visitor count and broadcast to everyone in real-time
+        totalVisitors++;
+        io.emit('visitor-update', totalVisitors);
+        
         io.emit('user-status-update', { email: email, status: true }); 
     });
 
