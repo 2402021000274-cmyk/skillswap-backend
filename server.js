@@ -25,22 +25,22 @@ const io = new Server(server, {
 
 const onlineUsers = new Map(); 
 
-// 🟢 BUG 3 FIX: Counter 0 se shuru hoga aur refresh pe nahi badhega!
+// 🟢 MAINTENANCE MODE LOCK: Isko 'true' rakhoge toh koi login/register nahi kar payega. 
+// Jab friend ko dikhana ho, toh isko 'false' karke server wapas start kar dena.
+let SURPRISE_MODE = true; 
+
 let totalVisitors = 0; 
 
 io.on('connection', (socket) => {
     
-    // Naya banda aate hi purana counter bhejo
     socket.emit('visitor-update', totalVisitors);
 
     socket.on('register-user', (data) => {
-        // Backend handle both old string format and new object format
         let email = data.email || data;
         let isNewLogin = data.isNewLogin || false;
         
         onlineUsers.set(email, socket.id);
         
-        // 🟢 BUG 3 FIX: Sirf tabhi counter badhega jab user actual fresh login karega!
         if (isNewLogin) {
             totalVisitors++;
             io.emit('visitor-update', totalVisitors);
@@ -141,6 +141,9 @@ const userSchema = new mongoose.Schema({ email: { type: String, unique: true } }
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 app.post('/register', async (req, res) => {
+    // 🟢 NEW MAINTENANCE MESSAGE
+    if (SURPRISE_MODE) return res.status(403).json({ message: "🚧 System abhi Maintenance Mode me gaya he! Please thodi der wait karein." });
+
     try {
         const { email } = req.body;
         const cleanEmail = email.trim().toLowerCase(); 
@@ -156,6 +159,9 @@ app.post('/register', async (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
+    // 🟢 NEW MAINTENANCE MESSAGE
+    if (SURPRISE_MODE) return res.status(403).json({ message: "🚧 System abhi Maintenance Mode me gaya he! Please thodi der wait karein." });
+
     try {
         const { email, password } = req.body;
         const cleanEmail = email.trim().toLowerCase();
