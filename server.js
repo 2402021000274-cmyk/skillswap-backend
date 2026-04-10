@@ -27,7 +27,7 @@ const onlineUsers = new Map();
 
 // 🟢 MAINTENANCE MODE LOCK: Isko 'true' rakhoge toh koi login/register nahi kar payega. 
 // Jab friend ko dikhana ho, toh isko 'false' karke server wapas start kar dena.
-let SURPRISE_MODE = true; 
+let SURPRISE_MODE = false; 
 
 let totalVisitors = 0; 
 
