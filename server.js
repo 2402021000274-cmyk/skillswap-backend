@@ -25,8 +25,6 @@ const io = new Server(server, {
 
 const onlineUsers = new Map(); 
 
-// 🟢 MAINTENANCE MODE LOCK: Isko 'true' rakhoge toh koi login/register nahi kar payega. 
-// Jab friend ko dikhana ho, toh isko 'false' karke server wapas start kar dena.
 let SURPRISE_MODE = false; 
 
 let totalVisitors = 0; 
@@ -141,7 +139,6 @@ const userSchema = new mongoose.Schema({ email: { type: String, unique: true } }
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
 app.post('/register', async (req, res) => {
-    // 🟢 NEW MAINTENANCE MESSAGE
     if (SURPRISE_MODE) return res.status(403).json({ message: "🚧 System abhi Maintenance Mode me gaya he! Please thodi der wait karein." });
 
     try {
@@ -159,7 +156,6 @@ app.post('/register', async (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
-    // 🟢 NEW MAINTENANCE MESSAGE
     if (SURPRISE_MODE) return res.status(403).json({ message: "🚧 System abhi Maintenance Mode me gaya he! Please thodi der wait karein." });
 
     try {
@@ -220,6 +216,35 @@ app.delete('/delete-user/:email', async (req, res) => {
         if (deletedUser.deletedCount > 0) res.json({ message: "User deleted successfully!" });
         else res.status(404).json({ message: "User not found!" });
     } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// 🟢 AI TROUBLESHOOTER API ROUTE (NEW)
+app.post("/api/ai", async (req, res) => {
+    const { message } = req.body;
+    try {
+        const response = await fetch(
+            "https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill",
+            {
+                method: "POST",
+                headers: {
+                    // YAHAN APNA HUGGINGFACE TOKEN DALEIN (Jaise: Bearer hf_...)
+                    "Authorization": "Bearer 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 ", 
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ inputs: message })
+            }
+        );
+        const data = await response.json();
+        
+        if (data.error) {
+             return res.json({ reply: "AI Model is warming up... Please try again in 20 seconds." });
+        }
+
+        res.json({ reply: data[0]?.generated_text || "I didn't quite get that. Could you rephrase?" });
+    } catch (error) {
+        console.error("AI Error:", error);
+        res.status(500).json({ reply: "My AI brain is resting. Try again!" });
+    }
 });
 
 app.get('/', (req, res) => { res.send('🚀 Backend is Live!'); });
