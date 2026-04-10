@@ -13,14 +13,16 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning']
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 const server = http.createServer(app);
+// 🟢 FIXED: maxHttpBufferSize added to allow large image uploads during call
 const io = new Server(server, {
     cors: {
         origin: "*", 
         methods: ["GET", "POST", "PUT", "DELETE"]
-    }
+    },
+    maxHttpBufferSize: 1e8 
 });
 
 const onlineUsers = new Map(); 
@@ -101,6 +103,22 @@ io.on('connection', (socket) => {
                 candidate: data.candidate,
                 from: data.from
             });
+        }
+    });
+
+    // 🟢 NEW: SHARE NOTES SOCKET
+    socket.on('share-notes', (data) => {
+        const receiverSocket = onlineUsers.get(data.to);
+        if (receiverSocket) {
+            io.to(receiverSocket).emit('receive-notes', { notes: data.notes });
+        }
+    });
+
+    // 🟢 NEW: AI SYNC PAGE SOCKET
+    socket.on('sync-note-page', (data) => {
+        const receiverSocket = onlineUsers.get(data.to);
+        if (receiverSocket) {
+            io.to(receiverSocket).emit('sync-note-page', { pageIndex: data.pageIndex });
         }
     });
 
@@ -218,7 +236,6 @@ app.delete('/delete-user/:email', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 🟢 AI TROUBLESHOOTER API ROUTE (NEW)
 app.post("/api/ai", async (req, res) => {
     const { message } = req.body;
     try {
@@ -227,7 +244,6 @@ app.post("/api/ai", async (req, res) => {
             {
                 method: "POST",
                 headers: {
-                    // YAHAN APNA HUGGINGFACE TOKEN DALEIN (Jaise: Bearer hf_...)
                     "Authorization": "Bearer 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 ", 
                     "Content-Type": "application/json"
                 },
