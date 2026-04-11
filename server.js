@@ -301,6 +301,17 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
+// 🟢 NEW: Maintenance Mode API
+app.get('/admin/maintenance-status', (req, res) => {
+    res.json({ isMaintenance: SURPRISE_MODE });
+});
+
+app.post('/admin/toggle-maintenance', (req, res) => {
+    SURPRISE_MODE = req.body.isMaintenance;
+    io.emit('maintenance-mode', SURPRISE_MODE); // Live sabhi ko bahar nikalne ke liye
+    res.json({ message: "Maintenance mode updated", isMaintenance: SURPRISE_MODE });
+});
+
 app.get('/', (req, res) => { res.send('🚀 Backend is Live!'); });
 
 const PORT = process.env.PORT || 5000;
