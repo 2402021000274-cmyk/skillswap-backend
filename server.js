@@ -16,7 +16,7 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 
 const server = http.createServer(app);
-// 🟢 FIXED: maxHttpBufferSize added to allow large image uploads during call
+// maxHttpBufferSize added to allow large image uploads during call
 const io = new Server(server, {
     cors: {
         origin: "*", 
@@ -106,7 +106,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🟢 NEW: SHARE NOTES SOCKET
+    // 🟢 SHARE NOTES SOCKET
     socket.on('share-notes', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -114,7 +114,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🟢 NEW: AI SYNC PAGE SOCKET
+    // 🟢 AI/MANUAL SYNC PAGE SOCKET (WORKS BOTH WAYS)
     socket.on('sync-note-page', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -260,6 +260,44 @@ app.post("/api/ai", async (req, res) => {
     } catch (error) {
         console.error("AI Error:", error);
         res.status(500).json({ reply: "My AI brain is resting. Try again!" });
+    }
+});
+
+// ==========================================
+// 🟢 NAYE ADMIN API ROUTES
+// ==========================================
+
+// 1. Saare users ki list lana
+app.get('/admin/all-users', async (req, res) => {
+    try {
+        const users = await User.find({}, { password: 0 }); // Password chupa kar baki sab dega
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ message: "Server error while fetching users" });
+    }
+});
+
+// 2. Kisi user ko delete karna
+app.delete('/admin/delete-user/:email', async (req, res) => {
+    try {
+        await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
+        res.json({ message: "User deleted by Admin successfully!" });
+    } catch (error) {
+        res.status(500).json({ message: "Error deleting user" });
+    }
+});
+
+// 3. Credits manual update karna
+app.put('/admin/update-credits/:email', async (req, res) => {
+    try {
+        const { credits } = req.body;
+        await User.findOneAndUpdate(
+            { email: req.params.email.trim().toLowerCase() },
+            { $set: { credits: credits } }
+        );
+        res.json({ message: "Credits updated by Admin!" });
+    } catch (error) {
+        res.status(500).json({ message: "Error updating credits" });
     }
 });
 
