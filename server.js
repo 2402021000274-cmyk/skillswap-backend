@@ -327,7 +327,57 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
-// 🟢 NEW: Maintenance Mode API
+// 4. NEW: 🟢 Admin Force End Session Backend
+app.post('/admin/force-end-swap', async (req, res) => {
+    try {
+        const { providerEmail, requesterEmail, skill, topic } = req.body;
+        let provider = await User.findOne({ email: providerEmail });
+        let requester = await User.findOne({ email: requesterEmail });
+
+        if(provider && requester) {
+            // Give provider 1 credit
+            provider.credits = (provider.credits || 0) + 1;
+            provider.notifications = provider.notifications || [];
+            provider.notifications.push({ text: `🛡️ Admin safely ended your session. You received 1 Credit for teaching '${skill}'.`, isRead: false, id: Date.now() });
+
+            // Give requester acquired skill
+            requester.acquiredSkills = requester.acquiredSkills || [];
+            let learnedTopic = topic || "General (Full Skill)";
+            let alreadyLearned = requester.acquiredSkills.some(item => 
+                (typeof item === 'object' && item.skill === skill && item.topic === learnedTopic) || 
+                (typeof item === 'string' && item === skill && learnedTopic === "General (Full Skill)")
+            );
+            
+            if (!alreadyLearned) {
+                requester.acquiredSkills.push({ skill: skill, topic: learnedTopic });
+            }
+            
+            requester.notifications = requester.notifications || [];
+            requester.notifications.push({ text: `🛡️ Admin ended the session. You successfully learned '${learnedTopic}' in ${skill}.`, isRead: false, id: Date.now() });
+
+            // Remove swap from both
+            provider.swaps = provider.swaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
+            requester.swaps = requester.swaps.filter(s => !(s.partnerEmail === providerEmail && s.skill === skill));
+
+            // Save to DB
+            await User.updateOne({ email: providerEmail }, { $set: provider });
+            await User.updateOne({ email: requesterEmail }, { $set: requester });
+
+            // Tell live users to refresh via socket!
+            io.emit('user-status-update', { email: providerEmail, status: true });
+            io.emit('user-status-update', { email: requesterEmail, status: true });
+
+            res.json({ message: "Session Force Ended Successfully!" });
+        } else {
+            res.status(404).json({ message: "Users not found." });
+        }
+    } catch (error) {
+        res.status(500).json({ message: "Error forcing end session" });
+    }
+});
+
+
+// 5. Maintenance Mode API
 app.get('/admin/maintenance-status', (req, res) => {
     res.json({ isMaintenance: SURPRISE_MODE });
 });
