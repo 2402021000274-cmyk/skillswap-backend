@@ -29,13 +29,18 @@ const onlineUsers = new Map();
 
 let SURPRISE_MODE = false; 
 
+// Memory fallback (Database load hone tak)
 let totalVisitors = 0; 
+
+// 🟢 NEW: System Stats Database Schema
+const statSchema = new mongoose.Schema({ name: String, count: Number });
+const SystemStat = mongoose.models.SystemStat || mongoose.model('SystemStat', statSchema);
 
 io.on('connection', (socket) => {
     
     socket.emit('visitor-update', totalVisitors);
 
-    socket.on('register-user', (data) => {
+    socket.on('register-user', async (data) => {
         let email = data.email || data;
         let isNewLogin = data.isNewLogin || false;
         
@@ -44,6 +49,17 @@ io.on('connection', (socket) => {
         if (isNewLogin) {
             totalVisitors++;
             io.emit('visitor-update', totalVisitors);
+            // 🟢 NEW: Permanently save count to MongoDB
+            try {
+                await SystemStat.findOneAndUpdate(
+                    { name: 'totalVisitors' }, 
+                    { count: totalVisitors }, 
+                    { upsert: true }
+                );
+            } catch(e) { console.log("Stat save error", e); }
+        } else {
+            // Agar purana user refresh karke wapas aaya hai toh sirf current count dikhao
+            socket.emit('visitor-update', totalVisitors);
         }
         
         io.emit('user-status-update', { email: email, status: true }); 
@@ -148,6 +164,16 @@ mongoose.connect(process.env.MONGO_URI)
               await db.collection('users').createIndex({ email: 1 }, { unique: true });
               console.log('🔄 Database Indexes Synchronized!');
           }
+          
+          // 🟢 NEW: Load Visitor Count from Database immediately when server starts
+          let stat = await SystemStat.findOne({ name: 'totalVisitors' });
+          if (!stat) {
+              stat = new SystemStat({ name: 'totalVisitors', count: 0 });
+              await stat.save();
+          }
+          totalVisitors = stat.count;
+          console.log(`📊 Permanent Visitor Count Loaded: ${totalVisitors}`);
+          
       } catch(e) { console.log('Index creation skipped.'); }
   })
   .catch((err) => console.log('❌ Database Connection Error:', err.message));
