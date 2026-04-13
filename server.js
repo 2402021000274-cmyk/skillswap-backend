@@ -290,7 +290,7 @@ app.post("/api/ai", async (req, res) => {
 });
 
 // ==========================================
-// 🟢 NAYE ADMIN API ROUTES
+// 🟢 ADMIN API ROUTES
 // ==========================================
 
 // 1. Saare users ki list lana
@@ -327,54 +327,69 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
-// 4. 🟢 FIXED: Admin Force End Session Backend (With markModified logic to guarantee deletion)
+// 4. 🟢 GUARANTEED FIX: Admin Force End Session Backend
 app.post('/admin/force-end-swap', async (req, res) => {
     try {
         const { providerEmail, requesterEmail, skill, topic } = req.body;
-        let provider = await User.findOne({ email: providerEmail });
-        let requester = await User.findOne({ email: requesterEmail });
+        
+        // .lean() use kiya taaki Mongoose document ki jagah plain object mile (Best for strict: false)
+        let provider = await User.findOne({ email: providerEmail }).lean();
+        let requester = await User.findOne({ email: requesterEmail }).lean();
 
         if(provider && requester) {
             
-            // 1. Provider Logic (Add Credit, Remove Swap)
-            provider.credits = (provider.credits || 0) + 1;
-            provider.notifications = provider.notifications || [];
-            provider.notifications.push({ text: `🛡️ Admin safely ended your session. You received 1 Credit for teaching '${skill}'.`, isRead: false, id: Date.now() });
+            // ==================
+            // PROVIDER LOGIC
+            // ==================
+            let pSwaps = provider.swaps || [];
+            // Delete swap forcefully from array
+            pSwaps = pSwaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
             
-            // Yahan properly array filter karke markModified kiya gaya hai
-            if (provider.swaps) {
-                provider.swaps = provider.swaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
-                provider.markModified('swaps'); 
-            }
-            provider.markModified('credits');
-            provider.markModified('notifications');
-            await provider.save();
+            let pNotis = provider.notifications || [];
+            pNotis.push({ text: `🛡️ Admin safely ended your session. You received 1 Credit for teaching '${skill}'.`, isRead: false, id: Date.now() });
 
-            // 2. Requester Logic (Add Acquired Skill, Remove Swap)
-            requester.acquiredSkills = requester.acquiredSkills || [];
+            // $set use karke DB ko sidha overwrite karenge
+            await User.updateOne(
+                { email: providerEmail },
+                { $set: { 
+                    credits: (provider.credits || 0) + 1, 
+                    swaps: pSwaps, 
+                    notifications: pNotis 
+                }}
+            );
+
+            // ==================
+            // REQUESTER LOGIC
+            // ==================
+            let rSwaps = requester.swaps || [];
+            // Delete swap forcefully from array
+            rSwaps = rSwaps.filter(s => !(s.partnerEmail === providerEmail && s.skill === skill));
+            
+            let rAcquired = requester.acquiredSkills || [];
             let learnedTopic = topic || "General (Full Skill)";
-            let alreadyLearned = requester.acquiredSkills.some(item => 
+            let alreadyLearned = rAcquired.some(item => 
                 (typeof item === 'object' && item.skill === skill && item.topic === learnedTopic) || 
                 (typeof item === 'string' && item === skill && learnedTopic === "General (Full Skill)")
             );
             
             if (!alreadyLearned) {
-                requester.acquiredSkills.push({ skill: skill, topic: learnedTopic });
+                rAcquired.push({ skill: skill, topic: learnedTopic });
             }
-            
-            requester.notifications = requester.notifications || [];
-            requester.notifications.push({ text: `🛡️ Admin ended the session. You successfully learned '${learnedTopic}' in ${skill}.`, isRead: false, id: Date.now() });
 
-            // Yahan properly array filter karke markModified kiya gaya hai
-            if (requester.swaps) {
-                requester.swaps = requester.swaps.filter(s => !(s.partnerEmail === providerEmail && s.skill === skill));
-                requester.markModified('swaps');
-            }
-            requester.markModified('acquiredSkills');
-            requester.markModified('notifications');
-            await requester.save();
+            let rNotis = requester.notifications || [];
+            rNotis.push({ text: `🛡️ Admin ended the session. You successfully learned '${learnedTopic}' in ${skill}.`, isRead: false, id: Date.now() });
 
-            // Tell live users to refresh via socket (Unke screen se turant gayab hoga!)
+            // $set use karke DB ko sidha overwrite karenge
+            await User.updateOne(
+                { email: requesterEmail },
+                { $set: { 
+                    swaps: rSwaps, 
+                    acquiredSkills: rAcquired, 
+                    notifications: rNotis 
+                }}
+            );
+
+            // Tell live users to refresh via socket! (Turant dashboard se clear hoga)
             io.emit('user-status-update', { email: providerEmail, status: true });
             io.emit('user-status-update', { email: requesterEmail, status: true });
 
