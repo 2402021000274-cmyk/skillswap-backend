@@ -327,7 +327,7 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
-// 4. NEW: 🟢 Admin Force End Session Backend
+// 4. 🟢 FIXED: Admin Force End Session Backend (With markModified logic to guarantee deletion)
 app.post('/admin/force-end-swap', async (req, res) => {
     try {
         const { providerEmail, requesterEmail, skill, topic } = req.body;
@@ -335,12 +335,22 @@ app.post('/admin/force-end-swap', async (req, res) => {
         let requester = await User.findOne({ email: requesterEmail });
 
         if(provider && requester) {
-            // Give provider 1 credit
+            
+            // 1. Provider Logic (Add Credit, Remove Swap)
             provider.credits = (provider.credits || 0) + 1;
             provider.notifications = provider.notifications || [];
             provider.notifications.push({ text: `🛡️ Admin safely ended your session. You received 1 Credit for teaching '${skill}'.`, isRead: false, id: Date.now() });
+            
+            // Yahan properly array filter karke markModified kiya gaya hai
+            if (provider.swaps) {
+                provider.swaps = provider.swaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
+                provider.markModified('swaps'); 
+            }
+            provider.markModified('credits');
+            provider.markModified('notifications');
+            await provider.save();
 
-            // Give requester acquired skill
+            // 2. Requester Logic (Add Acquired Skill, Remove Swap)
             requester.acquiredSkills = requester.acquiredSkills || [];
             let learnedTopic = topic || "General (Full Skill)";
             let alreadyLearned = requester.acquiredSkills.some(item => 
@@ -355,15 +365,16 @@ app.post('/admin/force-end-swap', async (req, res) => {
             requester.notifications = requester.notifications || [];
             requester.notifications.push({ text: `🛡️ Admin ended the session. You successfully learned '${learnedTopic}' in ${skill}.`, isRead: false, id: Date.now() });
 
-            // Remove swap from both
-            provider.swaps = provider.swaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
-            requester.swaps = requester.swaps.filter(s => !(s.partnerEmail === providerEmail && s.skill === skill));
+            // Yahan properly array filter karke markModified kiya gaya hai
+            if (requester.swaps) {
+                requester.swaps = requester.swaps.filter(s => !(s.partnerEmail === providerEmail && s.skill === skill));
+                requester.markModified('swaps');
+            }
+            requester.markModified('acquiredSkills');
+            requester.markModified('notifications');
+            await requester.save();
 
-            // Save to DB
-            await User.updateOne({ email: providerEmail }, { $set: provider });
-            await User.updateOne({ email: requesterEmail }, { $set: requester });
-
-            // Tell live users to refresh via socket!
+            // Tell live users to refresh via socket (Unke screen se turant gayab hoga!)
             io.emit('user-status-update', { email: providerEmail, status: true });
             io.emit('user-status-update', { email: requesterEmail, status: true });
 
@@ -372,6 +383,7 @@ app.post('/admin/force-end-swap', async (req, res) => {
             res.status(404).json({ message: "Users not found." });
         }
     } catch (error) {
+        console.error("Force End Error:", error);
         res.status(500).json({ message: "Error forcing end session" });
     }
 });
