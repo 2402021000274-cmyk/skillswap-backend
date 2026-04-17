@@ -16,6 +16,7 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 
 const server = http.createServer(app);
+// maxHttpBufferSize added to allow large image uploads during call
 const io = new Server(server, {
     cors: {
         origin: "*", 
@@ -25,9 +26,13 @@ const io = new Server(server, {
 });
 
 const onlineUsers = new Map(); 
+
 let SURPRISE_MODE = false; 
+
+// Memory fallback (Database load hone tak)
 let totalVisitors = 0; 
 
+// 🟢 NEW: System Stats Database Schema
 const statSchema = new mongoose.Schema({ name: String, count: Number });
 const SystemStat = mongoose.models.SystemStat || mongoose.model('SystemStat', statSchema);
 
@@ -44,6 +49,7 @@ io.on('connection', (socket) => {
         if (isNewLogin) {
             totalVisitors++;
             io.emit('visitor-update', totalVisitors);
+            // 🟢 NEW: Permanently save count to MongoDB
             try {
                 await SystemStat.findOneAndUpdate(
                     { name: 'totalVisitors' }, 
@@ -52,6 +58,7 @@ io.on('connection', (socket) => {
                 );
             } catch(e) { console.log("Stat save error", e); }
         } else {
+            // Agar purana user refresh karke wapas aaya hai toh sirf current count dikhao
             socket.emit('visitor-update', totalVisitors);
         }
         
@@ -115,6 +122,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 🟢 SHARE NOTES SOCKET
     socket.on('share-notes', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -122,6 +130,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 🟢 AI/MANUAL SYNC PAGE SOCKET (WORKS BOTH WAYS)
     socket.on('sync-note-page', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -156,6 +165,7 @@ mongoose.connect(process.env.MONGO_URI)
               console.log('🔄 Database Indexes Synchronized!');
           }
           
+          // 🟢 NEW: Load Visitor Count from Database immediately when server starts
           let stat = await SystemStat.findOne({ name: 'totalVisitors' });
           if (!stat) {
               stat = new SystemStat({ name: 'totalVisitors', count: 0 });
@@ -310,15 +320,17 @@ app.post("/api/ai", async (req, res) => {
 // 🟢 ADMIN API ROUTES
 // ==========================================
 
+// 1. Saare users ki list lana
 app.get('/admin/all-users', async (req, res) => {
     try {
-        const users = await User.find({}, { password: 0 }); 
+        const users = await User.find({}, { password: 0 }); // Password chupa kar baki sab dega
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: "Server error while fetching users" });
     }
 });
 
+// 2. Kisi user ko delete karna
 app.delete('/admin/delete-user/:email', async (req, res) => {
     try {
         await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
@@ -328,6 +340,7 @@ app.delete('/admin/delete-user/:email', async (req, res) => {
     }
 });
 
+// 3. Credits manual update karna
 app.put('/admin/update-credits/:email', async (req, res) => {
     try {
         const { credits } = req.body;
@@ -341,13 +354,16 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
+// 4. Force End Session API
 app.post('/admin/force-end-swap', async (req, res) => {
     try {
         const { providerEmail, requesterEmail, skill, topic } = req.body;
+        
         let provider = await User.findOne({ email: providerEmail }).lean();
         let requester = await User.findOne({ email: requesterEmail }).lean();
 
         if(provider && requester) {
+            
             let pSwaps = provider.swaps || [];
             pSwaps = pSwaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
             
@@ -402,13 +418,28 @@ app.post('/admin/force-end-swap', async (req, res) => {
     }
 });
 
+// 5. 🟢 NEW HOD DEMO FEATURE: Trigger Review Modal on User Screens via Admin
+app.post('/admin/trigger-review', async (req, res) => {
+    try {
+        const { providerEmail, requesterEmail, skill } = req.body;
+        // Broadcast to all sockets. The frontend will check if the email matches.
+        io.emit('force-review-modal', { providerEmail, requesterEmail, skill });
+        res.json({ message: "Review prompt sent successfully!" });
+    } catch (error) {
+        console.error("Trigger Review Error:", error);
+        res.status(500).json({ message: "Error triggering review" });
+    }
+});
+
+
+// 6. Maintenance Mode API
 app.get('/admin/maintenance-status', (req, res) => {
     res.json({ isMaintenance: SURPRISE_MODE });
 });
 
 app.post('/admin/toggle-maintenance', (req, res) => {
     SURPRISE_MODE = req.body.isMaintenance;
-    io.emit('maintenance-mode', SURPRISE_MODE); 
+    io.emit('maintenance-mode', SURPRISE_MODE); // Live sabhi ko bahar nikalne ke liye
     res.json({ message: "Maintenance mode updated", isMaintenance: SURPRISE_MODE });
 });
 
