@@ -12,12 +12,16 @@ const userSchema = new mongoose.Schema({
     isPublic: { type: Boolean, default: true },
     credits: { type: Number, default: 5 },
 
-    // 🟢 NAYE FIELDS: Ye Mongoose ko batayega ki inko save karna hai
     swaps: { type: Array, default: [] },
     notifications: { type: Array, default: [] },
     chatHistory: { type: Object, default: {} },
-    isOnline: { type: Boolean, default: false }
+    isOnline: { type: Boolean, default: false },
 
-}, { strict: false }); // 🔥 MAIN FIX: Ye MongoDB ko future me bhi har naya data save karne ki permission dega
+    // 🟢 NEW FIELDS FOR REVIEW SYSTEM:
+    totalReviews: { type: Number, default: 0 },
+    averageRating: { type: Number, default: 0 },
+    reviews: { type: Array, default: [] }
+
+}, { strict: false });
 
 module.exports = mongoose.model('User', userSchema);
