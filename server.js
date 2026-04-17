@@ -16,7 +16,6 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 
 const server = http.createServer(app);
-// maxHttpBufferSize added to allow large image uploads during call
 const io = new Server(server, {
     cors: {
         origin: "*", 
@@ -26,13 +25,9 @@ const io = new Server(server, {
 });
 
 const onlineUsers = new Map(); 
-
 let SURPRISE_MODE = false; 
-
-// Memory fallback (Database load hone tak)
 let totalVisitors = 0; 
 
-// 🟢 NEW: System Stats Database Schema
 const statSchema = new mongoose.Schema({ name: String, count: Number });
 const SystemStat = mongoose.models.SystemStat || mongoose.model('SystemStat', statSchema);
 
@@ -49,7 +44,6 @@ io.on('connection', (socket) => {
         if (isNewLogin) {
             totalVisitors++;
             io.emit('visitor-update', totalVisitors);
-            // 🟢 NEW: Permanently save count to MongoDB
             try {
                 await SystemStat.findOneAndUpdate(
                     { name: 'totalVisitors' }, 
@@ -58,7 +52,6 @@ io.on('connection', (socket) => {
                 );
             } catch(e) { console.log("Stat save error", e); }
         } else {
-            // Agar purana user refresh karke wapas aaya hai toh sirf current count dikhao
             socket.emit('visitor-update', totalVisitors);
         }
         
@@ -122,7 +115,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🟢 SHARE NOTES SOCKET
     socket.on('share-notes', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -130,7 +122,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🟢 AI/MANUAL SYNC PAGE SOCKET (WORKS BOTH WAYS)
     socket.on('sync-note-page', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -165,7 +156,6 @@ mongoose.connect(process.env.MONGO_URI)
               console.log('🔄 Database Indexes Synchronized!');
           }
           
-          // 🟢 NEW: Load Visitor Count from Database immediately when server starts
           let stat = await SystemStat.findOne({ name: 'totalVisitors' });
           if (!stat) {
               stat = new SystemStat({ name: 'totalVisitors', count: 0 });
@@ -234,6 +224,33 @@ app.post('/reset-password', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// 🟢 NEW: Submit Review Route
+app.post('/submit-review', async (req, res) => {
+    try {
+        const { targetEmail, reviewerEmail, reviewerName, rating, comment } = req.body;
+        const user = await User.findOne({ email: targetEmail.trim().toLowerCase() });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const newReview = { reviewerEmail, reviewerName, rating: Number(rating), comment, date: new Date() };
+        let reviews = user.reviews || [];
+        reviews.push(newReview);
+
+        let totalReviews = reviews.length;
+        let sum = reviews.reduce((acc, curr) => acc + curr.rating, 0);
+        let averageRating = (sum / totalReviews).toFixed(1);
+
+        await User.findOneAndUpdate(
+            { email: targetEmail.trim().toLowerCase() },
+            { $set: { reviews: reviews, totalReviews: totalReviews, averageRating: Number(averageRating) } }
+        );
+        
+        io.emit('user-status-update', { email: targetEmail.trim().toLowerCase(), status: true });
+        res.status(200).json({ message: "Review submitted successfully!" });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get('/users', async (req, res) => {
     try {
         const users = await User.find();
@@ -293,17 +310,15 @@ app.post("/api/ai", async (req, res) => {
 // 🟢 ADMIN API ROUTES
 // ==========================================
 
-// 1. Saare users ki list lana
 app.get('/admin/all-users', async (req, res) => {
     try {
-        const users = await User.find({}, { password: 0 }); // Password chupa kar baki sab dega
+        const users = await User.find({}, { password: 0 }); 
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: "Server error while fetching users" });
     }
 });
 
-// 2. Kisi user ko delete karna
 app.delete('/admin/delete-user/:email', async (req, res) => {
     try {
         await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
@@ -313,7 +328,6 @@ app.delete('/admin/delete-user/:email', async (req, res) => {
     }
 });
 
-// 3. Credits manual update karna
 app.put('/admin/update-credits/:email', async (req, res) => {
     try {
         const { credits } = req.body;
@@ -327,28 +341,19 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
-// 4. 🟢 GUARANTEED FIX: Admin Force End Session Backend
 app.post('/admin/force-end-swap', async (req, res) => {
     try {
         const { providerEmail, requesterEmail, skill, topic } = req.body;
-        
-        // .lean() use kiya taaki Mongoose document ki jagah plain object mile (Best for strict: false)
         let provider = await User.findOne({ email: providerEmail }).lean();
         let requester = await User.findOne({ email: requesterEmail }).lean();
 
         if(provider && requester) {
-            
-            // ==================
-            // PROVIDER LOGIC
-            // ==================
             let pSwaps = provider.swaps || [];
-            // Delete swap forcefully from array
             pSwaps = pSwaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
             
             let pNotis = provider.notifications || [];
             pNotis.push({ text: `🛡️ Admin safely ended your session. You received 1 Credit for teaching '${skill}'.`, isRead: false, id: Date.now() });
 
-            // $set use karke DB ko sidha overwrite karenge
             await User.updateOne(
                 { email: providerEmail },
                 { $set: { 
@@ -358,11 +363,7 @@ app.post('/admin/force-end-swap', async (req, res) => {
                 }}
             );
 
-            // ==================
-            // REQUESTER LOGIC
-            // ==================
             let rSwaps = requester.swaps || [];
-            // Delete swap forcefully from array
             rSwaps = rSwaps.filter(s => !(s.partnerEmail === providerEmail && s.skill === skill));
             
             let rAcquired = requester.acquiredSkills || [];
@@ -379,7 +380,6 @@ app.post('/admin/force-end-swap', async (req, res) => {
             let rNotis = requester.notifications || [];
             rNotis.push({ text: `🛡️ Admin ended the session. You successfully learned '${learnedTopic}' in ${skill}.`, isRead: false, id: Date.now() });
 
-            // $set use karke DB ko sidha overwrite karenge
             await User.updateOne(
                 { email: requesterEmail },
                 { $set: { 
@@ -389,7 +389,6 @@ app.post('/admin/force-end-swap', async (req, res) => {
                 }}
             );
 
-            // Tell live users to refresh via socket! (Turant dashboard se clear hoga)
             io.emit('user-status-update', { email: providerEmail, status: true });
             io.emit('user-status-update', { email: requesterEmail, status: true });
 
@@ -403,15 +402,13 @@ app.post('/admin/force-end-swap', async (req, res) => {
     }
 });
 
-
-// 5. Maintenance Mode API
 app.get('/admin/maintenance-status', (req, res) => {
     res.json({ isMaintenance: SURPRISE_MODE });
 });
 
 app.post('/admin/toggle-maintenance', (req, res) => {
     SURPRISE_MODE = req.body.isMaintenance;
-    io.emit('maintenance-mode', SURPRISE_MODE); // Live sabhi ko bahar nikalne ke liye
+    io.emit('maintenance-mode', SURPRISE_MODE); 
     res.json({ message: "Maintenance mode updated", isMaintenance: SURPRISE_MODE });
 });
 
