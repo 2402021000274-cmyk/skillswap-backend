@@ -16,7 +16,6 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 
 const server = http.createServer(app);
-// maxHttpBufferSize added to allow large image uploads during call
 const io = new Server(server, {
     cors: {
         origin: "*", 
@@ -29,10 +28,8 @@ const onlineUsers = new Map();
 
 let SURPRISE_MODE = false; 
 
-// Memory fallback (Database load hone tak)
 let totalVisitors = 0; 
 
-// 🟢 NEW: System Stats Database Schema
 const statSchema = new mongoose.Schema({ name: String, count: Number });
 const SystemStat = mongoose.models.SystemStat || mongoose.model('SystemStat', statSchema);
 
@@ -49,7 +46,6 @@ io.on('connection', (socket) => {
         if (isNewLogin) {
             totalVisitors++;
             io.emit('visitor-update', totalVisitors);
-            // 🟢 NEW: Permanently save count to MongoDB
             try {
                 await SystemStat.findOneAndUpdate(
                     { name: 'totalVisitors' }, 
@@ -58,7 +54,6 @@ io.on('connection', (socket) => {
                 );
             } catch(e) { console.log("Stat save error", e); }
         } else {
-            // Agar purana user refresh karke wapas aaya hai toh sirf current count dikhao
             socket.emit('visitor-update', totalVisitors);
         }
         
@@ -122,7 +117,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🟢 SHARE NOTES SOCKET
     socket.on('share-notes', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
@@ -130,12 +124,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 🟢 AI/MANUAL SYNC PAGE SOCKET (WORKS BOTH WAYS)
     socket.on('sync-note-page', (data) => {
         const receiverSocket = onlineUsers.get(data.to);
         if (receiverSocket) {
             io.to(receiverSocket).emit('sync-note-page', { pageIndex: data.pageIndex });
         }
+    });
+
+    // 🟢 NEW FIX: Mentor khud session end kare toh Learner ko popup dikhane ka socket
+    socket.on('trigger-user-review', (data) => {
+        io.emit('force-review-modal', data);
     });
 
     socket.on('disconnect', () => {
@@ -165,7 +163,6 @@ mongoose.connect(process.env.MONGO_URI)
               console.log('🔄 Database Indexes Synchronized!');
           }
           
-          // 🟢 NEW: Load Visitor Count from Database immediately when server starts
           let stat = await SystemStat.findOne({ name: 'totalVisitors' });
           if (!stat) {
               stat = new SystemStat({ name: 'totalVisitors', count: 0 });
@@ -234,16 +231,28 @@ app.post('/reset-password', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// 🟢 NEW: Submit Review Route
+// 🟢 NEW FIX: Submit Review - Skill Specific Calculation
 app.post('/submit-review', async (req, res) => {
     try {
-        const { targetEmail, reviewerEmail, reviewerName, rating, comment } = req.body;
+        const { targetEmail, reviewerEmail, reviewerName, rating, comment, skill } = req.body;
         const user = await User.findOne({ email: targetEmail.trim().toLowerCase() });
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        const newReview = { reviewerEmail, reviewerName, rating: Number(rating), comment, date: new Date() };
+        const newReview = { reviewerEmail, reviewerName, rating: Number(rating), comment, skill, date: new Date() };
         let reviews = user.reviews || [];
         reviews.push(newReview);
+
+        // 🟢 Naya Data Structure: Har skill ka alag average calculate hoga
+        let skillRatings = user.skillRatings || {};
+        let targetSkill = skill || "General";
+        
+        if (!skillRatings[targetSkill]) {
+            skillRatings[targetSkill] = { totalReviews: 0, averageRating: 0, sum: 0 };
+        }
+
+        skillRatings[targetSkill].sum += Number(rating);
+        skillRatings[targetSkill].totalReviews += 1;
+        skillRatings[targetSkill].averageRating = Number((skillRatings[targetSkill].sum / skillRatings[targetSkill].totalReviews).toFixed(1));
 
         let totalReviews = reviews.length;
         let sum = reviews.reduce((acc, curr) => acc + curr.rating, 0);
@@ -251,7 +260,12 @@ app.post('/submit-review', async (req, res) => {
 
         await User.findOneAndUpdate(
             { email: targetEmail.trim().toLowerCase() },
-            { $set: { reviews: reviews, totalReviews: totalReviews, averageRating: Number(averageRating) } }
+            { $set: { 
+                reviews: reviews, 
+                skillRatings: skillRatings, // Skill wise rating push
+                totalReviews: totalReviews, 
+                averageRating: Number(averageRating) 
+            } }
         );
         
         io.emit('user-status-update', { email: targetEmail.trim().toLowerCase(), status: true });
@@ -320,17 +334,15 @@ app.post("/api/ai", async (req, res) => {
 // 🟢 ADMIN API ROUTES
 // ==========================================
 
-// 1. Saare users ki list lana
 app.get('/admin/all-users', async (req, res) => {
     try {
-        const users = await User.find({}, { password: 0 }); // Password chupa kar baki sab dega
+        const users = await User.find({}, { password: 0 }); 
         res.json(users);
     } catch (error) {
         res.status(500).json({ message: "Server error while fetching users" });
     }
 });
 
-// 2. Kisi user ko delete karna
 app.delete('/admin/delete-user/:email', async (req, res) => {
     try {
         await User.deleteOne({ email: req.params.email.trim().toLowerCase() });
@@ -340,7 +352,6 @@ app.delete('/admin/delete-user/:email', async (req, res) => {
     }
 });
 
-// 3. Credits manual update karna
 app.put('/admin/update-credits/:email', async (req, res) => {
     try {
         const { credits } = req.body;
@@ -354,7 +365,6 @@ app.put('/admin/update-credits/:email', async (req, res) => {
     }
 });
 
-// 4. Force End Session API
 app.post('/admin/force-end-swap', async (req, res) => {
     try {
         const { providerEmail, requesterEmail, skill, topic } = req.body;
@@ -363,7 +373,6 @@ app.post('/admin/force-end-swap', async (req, res) => {
         let requester = await User.findOne({ email: requesterEmail }).lean();
 
         if(provider && requester) {
-            
             let pSwaps = provider.swaps || [];
             pSwaps = pSwaps.filter(s => !(s.partnerEmail === requesterEmail && s.skill === skill));
             
@@ -418,11 +427,9 @@ app.post('/admin/force-end-swap', async (req, res) => {
     }
 });
 
-// 5. 🟢 NEW HOD DEMO FEATURE: Trigger Review Modal on User Screens via Admin
 app.post('/admin/trigger-review', async (req, res) => {
     try {
         const { providerEmail, requesterEmail, skill } = req.body;
-        // Broadcast to all sockets. The frontend will check if the email matches.
         io.emit('force-review-modal', { providerEmail, requesterEmail, skill });
         res.json({ message: "Review prompt sent successfully!" });
     } catch (error) {
@@ -431,15 +438,13 @@ app.post('/admin/trigger-review', async (req, res) => {
     }
 });
 
-
-// 6. Maintenance Mode API
 app.get('/admin/maintenance-status', (req, res) => {
     res.json({ isMaintenance: SURPRISE_MODE });
 });
 
 app.post('/admin/toggle-maintenance', (req, res) => {
     SURPRISE_MODE = req.body.isMaintenance;
-    io.emit('maintenance-mode', SURPRISE_MODE); // Live sabhi ko bahar nikalne ke liye
+    io.emit('maintenance-mode', SURPRISE_MODE); 
     res.json({ message: "Maintenance mode updated", isMaintenance: SURPRISE_MODE });
 });
 
